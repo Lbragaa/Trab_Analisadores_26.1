@@ -1,149 +1,235 @@
-# Relatório — Trabalho Final INF1022 2026.1
+# Relatorio - Trabalho Final INF1022 2026.1
 
-**Aluno 1:** Diogo Lins Benchimol
+## Identificacao
 
-**Matrícula:** 2312917  
-**Linguagem de saída escolhida:** Python  
-**Gerador de analisador sintático:** Lark, usando o modo `parser="lalr"`.
+- **Aluno 1:** Diogo Lins Benchimol
+- **Matricula 1:** 2312917
+- **Aluno 2:** Luan Carlos Almada Braga
+- **Matricula 2:** 2411776
+- **Linguagem de entrada:** ObsAct
+- **Linguagem de saida:** Python
+- **Gerador de analisador:** Lark com o modo LALR(1)
 
 ## 1. Objetivo
 
-O objetivo do trabalho foi implementar um analisador sintático para a linguagem **ObsAct**, capaz de receber um programa escrito em ObsAct e gerar como saída um programa equivalente em outra linguagem. Neste trabalho, a linguagem de saída escolhida foi **Python**.
+O trabalho implementa um transpilador capaz de receber um programa escrito em
+ObsAct, analisar sua estrutura e gerar um programa Python equivalente.
 
-O arquivo principal é `obsact.py`, que realiza quatro etapas:
+O programa gerado simula dispositivos e sensores. Ele nao controla equipamentos
+reais. As operacoes `ligar`, `desligar`, `verificar` e `alerta` usam mensagens no
+terminal e um dicionario interno de estados.
 
-1. pré-processamento de blocos;
-2. análise léxica e sintática com Lark/LALR(1);
-3. validações semânticas simples;
-4. geração de código Python.
+## 2. Arquitetura da implementacao
 
-## 2. Como executar
+O arquivo principal e `obsact.py`. A implementacao foi mantida em um unico
+modulo e possui as seguintes etapas:
 
-Primeiro, instale a dependência:
+1. leitura do arquivo ObsAct em UTF-8;
+2. pre-processamento dos blocos de comandos;
+3. analise lexica e sintatica com Lark/LALR(1);
+4. construcao de uma arvore sintatica abstrata;
+5. validacao semantica de dispositivos, observacoes e alertas;
+6. conversao segura dos identificadores ObsAct para identificadores Python;
+7. geracao do programa Python.
+
+As principais partes do arquivo sao:
+
+- `GRAMMAR`: gramatica reconhecida pelo Lark;
+- `preprocess`: normalizacao dos blocos de comandos;
+- `ASTBuilder`: conversao da arvore do Lark para uma AST simples;
+- `CodeGenerator.validate`: validacoes semanticas;
+- `CodeGenerator.generate`: geracao do codigo Python;
+- `main`: interface de linha de comando.
+
+## 3. Instalacao e execucao
+
+Instale a dependencia:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-Depois, execute o transpilador:
+Para traduzir um arquivo ObsAct:
 
 ```bash
-python obsact.py tests/teste1.obs -o saida.py
+python obsact.py tests/exemplo1.obsact -o saida.py
+```
+
+Para executar o programa Python gerado:
+
+```bash
 python saida.py
 ```
 
-Também é possível imprimir o Python gerado diretamente no terminal:
+Para mostrar o codigo gerado sem criar um arquivo:
 
 ```bash
-python obsact.py tests/teste1.obs --print
+python obsact.py tests/exemplo1.obsact --print
 ```
 
-## 3. O que foi implementado
+Para executar os testes automatizados:
 
-Foram implementadas as principais funcionalidades exigidas pelo enunciado:
+```bash
+python -m unittest discover -s tests -v
+```
 
-- declaração de dispositivos com ou sem observação/sensor;
-- atribuição de valores inteiros não negativos;
-- atribuição de valores booleanos (`True`, `False`, `TRUE`, `FALSE`);
-- atribuição com resultado de ação, como `set estado = verificar(ventilador)`;
-- comandos `ligar`, `desligar` e `verificar`;
-- estruturas condicionais com `se`, `entao` e `senao`;
-- condições com operadores `>`, `<`, `>=`, `<=`, `==` e `!=`;
-- operador lógico `&&` entre condições;
-- envio de alerta para um dispositivo;
-- envio de alerta concatenando mensagem e observação;
-- envio de alerta em broadcast para vários dispositivos com `para todos:`;
-- inicialização automática com zero para observações não definidas pelo programador.
+## 4. Funcionalidades implementadas
 
-## 4. Alterações e complementos na gramática
+Foram implementadas as seguintes funcionalidades:
 
-A gramática do enunciado foi preservada em espírito, mas algumas regras foram complementadas para aceitar os próprios exemplos do documento e tornar os blocos mais claros na implementação.
+- declaracao de dispositivos com ou sem observacao;
+- valores inteiros nao negativos;
+- valores booleanos `TRUE`, `FALSE`, `True` e `False`;
+- atribuicao de valores a observacoes;
+- atribuicao do retorno de `ligar`, `desligar` ou `verificar`;
+- atribuicao no formato `set {dispositivo, observacao} = valor`;
+- acoes `ligar`, `desligar` e `verificar`;
+- condicionais com `se`, `entao` e `senao`;
+- blocos com varios comandos;
+- condicionais aninhadas;
+- operadores `>`, `<`, `>=`, `<=`, `==` e `!=`;
+- condicoes compostas com `&&`;
+- alerta simples;
+- alerta com concatenacao entre mensagem e observacao;
+- broadcast de alerta para uma lista de dispositivos;
+- inicializacao automatica de observacoes com zero;
+- controle simulado do estado ligado ou desligado de cada dispositivo;
+- protecao contra palavras reservadas e nomes internos do Python.
 
-As principais alterações foram:
+## 5. Gramatica final
 
-1. O caractere `:` depois de `dispositivo` foi tratado como opcional, pois alguns exemplos usam `dispositivo { Monitor }`.
-2. Foi aceito `verificar(dispositivo)` além de `verificar dispositivo`, pois os exemplos usam a versão com parênteses.
-3. Foi aceita atribuição no formato `set { dispositivo, observation } = valor`, presente nos exemplos.
-4. Foi aceito envio de alerta com e sem parênteses:
-   - `enviar alerta "msg" Monitor`
-   - `enviar alerta ("msg") Monitor`
-   - `enviar alerta ("msg", sensor) Monitor`
-5. Foi adicionada a regra de broadcast:
-   - `enviar alerta ("msg") para todos: monitor, celular`
-   - `enviar alerta ("msg", sensor) para todos: monitor, celular`
-6. Uma linha contendo apenas `.` é interpretada como fechamento de bloco com múltiplos comandos. Isso foi feito para remover ambiguidades em comandos `se ... entao` com mais de uma instrução interna.
-
-## 5. Gramática final utilizada
-
-Abaixo está a gramática final em formato simplificado, equivalente à gramática usada no arquivo `obsact.py`.
+A gramatica abaixo representa a gramatica final de forma simplificada. Os
+simbolos `BEGIN_BLOCK` e `END_BLOCK` sao internos e sao inseridos pelo
+pre-processador.
 
 ```text
-PROGRAM     -> DEVICE+ STATEMENT*
+PROGRAM       -> DEVICE+ STATEMENT*
 
-DEVICE      -> dispositivo :? { NAME }
-DEVICE      -> dispositivo :? { NAME , NAME }
+DEVICE        -> dispositivo COLON_OPT { NAME }
+DEVICE        -> dispositivo COLON_OPT { NAME , NAME }
+COLON_OPT     -> : | vazio
 
-STATEMENT   -> CMD .?
-CMD         -> ATTRIB | OBSACT | ACT
+STATEMENT     -> CMD DOT_OPT
+DOT_OPT       -> . | vazio
 
-ATTRIB      -> set TARGET = VALUE
-TARGET      -> NAME
-TARGET      -> { NAME , NAME }
+CMD           -> ATTRIB
+CMD           -> OBSACT
+CMD           -> ACT
 
-VALUE       -> NUMBER | BOOL | EXECUTE | NAME
+ATTRIB        -> set TARGET = VALUE
+TARGET        -> NAME
+TARGET        -> { NAME , NAME }
 
-OBSACT      -> se OBS entao BLOCK
-OBSACT      -> se OBS entao BLOCK senao BLOCK
+VALUE         -> NUMBER
+VALUE         -> BOOL
+VALUE         -> EXECUTE
+VALUE         -> NAME
 
-BLOCK       -> CMD
-BLOCK       -> BEGIN_BLOCK CMD_STMT+ END_BLOCK
-CMD_STMT    -> CMD .?
+OBSACT        -> se OBS entao BLOCK
+OBSACT        -> se OBS entao BLOCK senao BLOCK
 
-OBS         -> CONDITION
-OBS         -> CONDITION && CONDITION && ...
-CONDITION   -> EXPR OPLOGIC EXPR
-EXPR        -> NUMBER | BOOL | EXECUTE | NAME
+BLOCK         -> CMD
+BLOCK         -> BEGIN_BLOCK CMD_STMT+ END_BLOCK
+CMD_STMT      -> CMD DOT_OPT
 
-ACT         -> EXECUTE | ALERT | BROADCAST
-EXECUTE     -> ACTION CALL_DEVICE
-ACTION      -> ligar | desligar | verificar
-CALL_DEVICE -> NAME
-CALL_DEVICE -> ( NAME )
+OBS           -> CONDITION
+OBS           -> CONDITION && OBS
 
-ALERT       -> enviar alerta ALERT_PAYLOAD NAME
-BROADCAST   -> enviar alerta ALERT_PAYLOAD para todos : NAME_LIST
+CONDITION     -> EXPR OPLOGIC EXPR
+
+EXPR          -> NUMBER
+EXPR          -> BOOL
+EXPR          -> EXECUTE
+EXPR          -> NAME
+
+ACT           -> EXECUTE
+ACT           -> ALERT
+ACT           -> BROADCAST
+
+EXECUTE       -> ACTION NAME
+EXECUTE       -> ACTION ( NAME )
+
+ACTION        -> ligar
+ACTION        -> desligar
+ACTION        -> verificar
+
+ALERT         -> enviar alerta ALERT_PAYLOAD NAME
+
+BROADCAST     -> enviar alerta ALERT_PAYLOAD para todos : NAME_LIST
 
 ALERT_PAYLOAD -> STRING
 ALERT_PAYLOAD -> ( STRING )
 ALERT_PAYLOAD -> ( STRING , NAME )
 
-NAME_LIST   -> NAME
-NAME_LIST   -> NAME , NAME_LIST
+NAME_LIST     -> NAME
+NAME_LIST     -> NAME , NAME_LIST
 
-OPLOGIC     -> > | < | >= | <= | == | !=
-BOOL        -> TRUE | FALSE | True | False
-NUMBER      -> dígito+
-NAME        -> letra ou underline seguido de letras, números ou underline
-STRING      -> texto entre aspas duplas
+OPLOGIC       -> > | < | >= | <= | == | !=
+BOOL          -> TRUE | FALSE | True | False
+NUMBER        -> digito+
+NAME          -> letra ou sublinhado seguido de letras, digitos ou sublinhados
+STRING        -> texto nao vazio entre aspas duplas
 ```
 
-Na implementação, `BEGIN_BLOCK` e `END_BLOCK` são marcadores internos inseridos pelo pré-processador. O programador escreve apenas uma linha contendo `.` para fechar um bloco com múltiplos comandos.
+Restricoes semanticas complementam a gramatica:
 
-## 6. Validações semânticas
+- `namedevice` contem somente letras e possui no maximo 100 caracteres;
+- nomes de observacao comecam por letra e podem usar letras, numeros e `_`;
+- `msg` nao pode ser vazia e possui no maximo 100 caracteres;
+- numeros sao inteiros nao negativos.
 
-O transpilador implementa algumas validações além da análise sintática:
+## 6. Alteracoes em relacao a gramatica inicial
 
-- não permite usar dispositivo não declarado;
-- não permite declarar o mesmo dispositivo duas vezes;
-- verifica se mensagens de alerta têm no máximo 100 caracteres;
-- verifica se nomes de dispositivos têm no máximo 100 caracteres;
-- emite aviso caso um nome de dispositivo contenha caracteres fora de `[A-Za-z]`, pois a gramática original restringe `namedevice` a letras.
+A gramatica do enunciado possui inconsistencias entre as regras e os exemplos.
+As seguintes alteracoes foram realizadas e estao explicitas neste relatorio:
 
-Variáveis/observações usadas no programa são inicializadas com zero no Python gerado, respeitando a suposição do enunciado de que valores não definidos devem começar em zero.
+1. O caractere `:` depois de `dispositivo` e opcional porque existem exemplos
+   com `dispositivo {Monitor}`.
+2. O ponto final e opcional em comandos simples porque alguns exemplos do
+   enunciado nao possuem ponto.
+3. `verificar` aceita `verificar dispositivo` e `verificar(dispositivo)`.
+4. Foi adicionada a atribuicao `set {dispositivo, observacao} = valor`, usada
+   nos exemplos.
+5. Alertas aceitam mensagem com ou sem parenteses.
+6. Foi adicionada a lista de dispositivos necessaria para o broadcast.
+7. Expressoes podem usar observacoes e resultados de acoes.
+8. Nomes de observacao podem conter numeros e sublinhados depois da primeira
+   letra, permitindo nomes como `estado_ventilador`.
+9. Blocos com varios comandos usam marcadores internos. Eles podem ser
+   encerrados por uma linha contendo apenas `.`, por recuo ou pelo fim do
+   arquivo.
+10. A forma `entao .`, presente em um exemplo, e tratada como o inicio de um
+    bloco de um comando.
+11. Para compatibilidade com o exemplo `dispositivo: {umidade}`, um dispositivo
+    simples tambem pode ser usado como observacao. Nesse caso, seu valor inicial
+    e zero.
+12. Comentarios iniciados por `#` ou `//` sao ignorados.
 
-## 7. Geração de código Python
+## 7. Validacoes semanticas
 
-O código Python gerado contém as funções auxiliares pedidas pelo enunciado:
+O transpilador rejeita:
+
+- dispositivo usado sem declaracao;
+- dispositivo declarado mais de uma vez;
+- nome de dispositivo com caracteres diferentes de letras;
+- nome de dispositivo com mais de 100 caracteres;
+- observacao usada sem declaracao;
+- nome de observacao invalido;
+- associacao incorreta em `set {dispositivo, observacao}`;
+- mensagem de alerta vazia;
+- mensagem de alerta com mais de 100 caracteres.
+
+Resultados de acoes podem criar variaveis auxiliares. Por exemplo:
+
+```text
+set estado_ventilador = verificar(ventilador).
+```
+
+Essas variaveis tambem comecam em zero antes da execucao dos comandos.
+
+## 8. Geracao do codigo Python
+
+Todo programa gerado contem as funcoes:
 
 ```python
 def ligar(namedevice): ...
@@ -152,51 +238,78 @@ def verificar(namedevice): ...
 def alerta(namedevice, msg, var=None): ...
 ```
 
-A função `alerta` usa o terceiro parâmetro opcional `var` para representar tanto a versão com apenas mensagem quanto a versão com mensagem + observação.
+O Python nao possui sobrecarga tradicional de funcoes. Por isso, as duas
+versoes de `alerta` descritas no enunciado foram representadas por uma unica
+funcao com o parametro opcional `var`.
 
-Exemplo de tradução:
+O estado dos dispositivos e mantido no dicionario `estados`. `ligar` grava o
+valor 1, `desligar` grava 0 e `verificar` consulta o valor atual.
 
-```text
-ligar lampada
-```
+Observacoes sao variaveis locais de `main` e comecam em zero. O gerador troca
+nomes que poderiam quebrar o Python. Por exemplo, uma observacao chamada
+`class` recebe um nome interno seguro como `obs_class`.
 
-vira:
+O broadcast gera uma chamada de `alerta` para cada dispositivo informado.
 
-```python
-ligar('lampada')
-```
+## 9. Testes utilizados
 
-E:
+Os cinco arquivos principais em `tests/` foram baseados nos exemplos do
+enunciado:
 
-```text
-enviar alerta ("Temperatura em", temperatura) para todos: monitor, celular
-```
+1. `exemplo1.obsact`: declaracoes, atribuicoes e condicional simples;
+2. `exemplo2.obsact`: bloco multiplo, `verificar` e condicional aninhada;
+3. `exemplo3.obsact`: broadcast e a forma `entao .`;
+4. `exemplo4.obsact`: alertas, booleanos e `senao`;
+5. `exemplo5.obsact`: atribuicao com dispositivo, bloco aninhado e estado.
 
-vira:
+O arquivo `tests/test_obsact.py` possui testes automatizados adicionais para:
 
-```python
-alerta('monitor', "Temperatura em", temperatura)
-alerta('celular', "Temperatura em", temperatura)
-```
+- compilacao e execucao dos cinco exemplos;
+- atribuicoes repetidas;
+- leitura de observacao antes de uma atribuicao explicita;
+- nomes reservados do Python;
+- identificadores que comecam com texto de palavras reservadas;
+- resultado de uma acao em uma atribuicao;
+- bloco `senao` em varias linhas;
+- condicao com `&&`;
+- broadcast em uma e em varias linhas;
+- dispositivo simples usado como observacao;
+- erros lexicos e semanticos;
+- limites de tamanho;
+- mensagem vazia;
+- geracao pela linha de comando.
 
-## 8. Testes utilizados
+As saidas de referencia estao em `expected/`. O arquivo
+`testes_obsact.zip` contem os casos utilizados e esta pronto para a entrega.
 
-Foram incluídos cinco testes na pasta `tests/`:
+## 10. O que funciona e limitacoes
 
-1. `teste1.obs`: declaração de dispositivos, atribuições simples e comando `se` com `ligar`.
-2. `teste2.obs`: bloco com múltiplos comandos, `verificar` e atribuição com retorno de ação.
-3. `teste3_broadcast.obs`: envio de alerta para múltiplos dispositivos com `para todos:`.
-4. `teste4_senao.obs`: uso de `senao`, alertas e booleanos.
-5. `teste5_extra.obs`: combinação de atribuição no formato `{device, observation}`, bloco múltiplo, `verificar`, alerta e `senao`.
+Todas as funcionalidades solicitadas pelo enunciado foram implementadas no
+ambiente simulado. O transpilador nao se comunica com dispositivos reais.
 
-Os arquivos Python gerados a partir desses testes estão na pasta `expected/`.
+A linguagem nao possui operacoes aritmeticas, lacos, funcoes definidas pelo
+programador ou um sistema avancado de tipos, pois esses recursos nao fazem
+parte do escopo solicitado.
 
-## 9. O que não foi implementado
+Para blocos com varios comandos no mesmo nivel de recuo, recomenda-se usar uma
+linha contendo apenas `.` para indicar claramente o fim do bloco.
 
-Não foi implementado um ambiente real de automação de dispositivos. As funções `ligar`, `desligar`, `verificar` e `alerta` apenas simulam o comportamento pedido pelo enunciado usando `print` e um dicionário interno de estados.
+Mensagens de erro sintatico sao produzidas pelo Lark e podem apresentar nomes
+internos dos tokens. Erros semanticos possuem mensagens especificas.
 
-Também não foi implementado sistema de tipos avançado: as observações são convertidas diretamente para variáveis Python, e o programador deve evitar nomes que sejam palavras reservadas de Python.
+## 11. Arquivos para entrega
 
-## 10. Conclusão
+- `obsact.py`: codigo do transpilador;
+- `requirements.txt`: dependencia do projeto;
+- `tests/`: entradas e testes automatizados;
+- `expected/`: programas Python de referencia;
+- `testes_obsact.zip`: casos de teste compactados;
+- `relatorio.md`: este relatorio;
+- `README.md`: instrucoes resumidas.
 
-O trabalho implementa um transpilador funcional de ObsAct para Python, usando um gerador de analisador sintático LALR(1). A implementação cobre a gramática-base, os exemplos do enunciado e a funcionalidade obrigatória de broadcast, além de acrescentar pequenas adaptações documentadas para tornar a linguagem mais prática e menos ambígua.
+## 12. Conclusao
+
+O projeto implementa um transpilador ObsAct para Python usando um parser
+LALR(1). A implementacao cobre a gramatica base, corrige inconsistencias dos
+exemplos, implementa o broadcast obrigatorio, valida os principais erros
+semanticos e gera programas Python executaveis.

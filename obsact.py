@@ -7,6 +7,8 @@ Implementado com Lark usando parser LALR(1).
 from __future__ import annotations
 
 import argparse
+import ast
+import keyword
 import re
 import sys
 from dataclasses import dataclass
@@ -67,10 +69,10 @@ GRAMMAR = r'''
                  | "(" STRING "," NAME ")" -> payload_msg_obs
     name_list: NAME ("," NAME)*
 
-    ACTION.2: /ligar|desligar|verificar/i
+    ACTION.2: /(?:ligar|desligar|verificar)\b/i
     BEGIN_BLOCK: "__INICIO_BLOCO__"
     END_BLOCK: "__FIM_BLOCO__"
-    BOOL.2: /TRUE|FALSE|True|False/
+    BOOL.2: /(?:TRUE|FALSE|True|False)\b/
     AND: "&&"
     OPLOGIC: ">="|"<="|"=="|"!="|">"|"<"
     NAME: /[A-Za-z_][A-Za-z0-9_]*/
@@ -88,19 +90,77 @@ def preprocess(source: str) -> str:
     """
     Normaliza blocos da linguagem ObsAct.
 
-    - Uma linha contendo apenas '.' vira o marcador interno de fim de bloco.
-    - Uma linha que termina em 'entao' ou 'senao' recebe o marcador interno
-      de início de bloco, permitindo vários comandos até o ponto isolado.
+    - Uma linha contendo apenas '.' fecha o bloco correspondente.
+    - Uma linha que termina em 'entao' ou 'senao' inicia um bloco multiplo.
+    - Recuo e fim de arquivo tambem podem fechar blocos. Isso permite aceitar
+      os exemplos do enunciado que omitem o ponto isolado final.
+    - A forma ``entao .`` usada em um exemplo do enunciado abre um bloco de
+      um comando.
     """
-    lines = []
+    lines: List[str] = []
+    blocks: List[Dict[str, Any]] = []
+
     for line in source.splitlines():
-        if re.fullmatch(r"\s*\.\s*", line):
-            lines.append("__FIM_BLOCO__")
-            continue
-        if re.search(r"\b(entao|senao)\s*$", line, flags=re.IGNORECASE):
-            lines.append(line + " __INICIO_BLOCO__")
-        else:
+        stripped = line.strip()
+        if not stripped:
             lines.append(line)
+            continue
+
+        indent = len(line) - len(line.lstrip(" \t"))
+
+        if stripped == ".":
+            closed = False
+            while blocks and blocks[-1]["header_indent"] >= indent:
+                lines.append("__FIM_BLOCO__")
+                blocks.pop()
+                closed = True
+            if not closed:
+                if blocks:
+                    # Alguns exemplos usam um ponto redundante depois de um
+                    # if de uma linha dentro de outro bloco.
+                    continue
+                lines.append(line)
+            continue
+
+        is_else = re.match(r"senao\b", stripped, flags=re.IGNORECASE) is not None
+        while blocks:
+            block = blocks[-1]
+            dedented = block["body_indent"] is not None and indent < block["body_indent"]
+            matching_else = is_else and indent == block["header_indent"]
+            if not (dedented or matching_else):
+                break
+            lines.append("__FIM_BLOCO__")
+            blocks.pop()
+
+        if blocks and blocks[-1]["body_indent"] is None:
+            blocks[-1]["body_indent"] = indent
+
+        header = re.search(r"\b(entao|senao)\s*(\.)?\s*$", stripped, flags=re.IGNORECASE)
+        if header:
+            has_inline_dot = header.group(2) is not None
+            normalized = re.sub(r"\.\s*$", "", line) if has_inline_dot else line
+            lines.append(normalized + " __INICIO_BLOCO__")
+            blocks.append(
+                {
+                    "header_indent": indent,
+                    "body_indent": None,
+                    "close_after_one": has_inline_dot,
+                }
+            )
+            continue
+
+        lines.append(line)
+        if (
+            blocks
+            and blocks[-1]["close_after_one"]
+            and re.search(r"\.\s*(?:(?:#|//).*)?$", line)
+        ):
+            lines.append("__FIM_BLOCO__")
+            blocks.pop()
+
+    while blocks:
+        lines.append("__FIM_BLOCO__")
+        blocks.pop()
     return "\n".join(lines)
 
 
@@ -229,10 +289,22 @@ class SemanticError(Exception):
 
 
 class CodeGenerator:
+    OBSERVATION_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+    PYTHON_RESERVED = {
+        "alerta",
+        "desligar",
+        "dispositivos",
+        "estados",
+        "ligar",
+        "main",
+        "verificar",
+    }
+
     def __init__(self, ast: Tuple[str, List[Any], List[Any]]):
         self.ast = ast
         self.devices: Dict[str, Device] = {}
         self.variables: Set[str] = set()
+        self.python_names: Dict[str, str] = {}
         self.warnings: List[str] = []
 
     def validate(self) -> None:
@@ -241,12 +313,13 @@ class CodeGenerator:
             if len(name) > 100:
                 raise SemanticError(f"Nome de dispositivo com mais de 100 caracteres: {name}")
             if not re.fullmatch(r"[A-Za-z]+", name):
-                self.warnings.append(
-                    f"Aviso: o dispositivo '{name}' contém caracteres fora de [A-Za-z]. "
-                    "A gramática original limita namedevice a letras."
+                raise SemanticError(
+                    f"Nome de dispositivo invalido; use somente letras: {name}"
                 )
             if name in self.devices:
                 raise SemanticError(f"Dispositivo declarado mais de uma vez: {name}")
+            if observation:
+                self._validate_observation_name(observation)
             self.devices[name] = Device(name, observation)
             if observation:
                 self.variables.add(observation)
@@ -254,16 +327,29 @@ class CodeGenerator:
         for stmt in statements:
             self._collect_and_validate_stmt(stmt)
 
+        self._build_python_names()
+
     def _collect_and_validate_stmt(self, stmt: Any) -> None:
         kind = stmt[0]
         if kind == "set":
             target = stmt[1]
             if target[0] == "target":
-                self.variables.add(target[1])
+                observation = target[1]
+                self._validate_observation_name(observation)
+                if stmt[2][0] == "execute":
+                    self._collect_expr(stmt[2])
+                    self.variables.add(observation)
+                    return
+                self._require_variable(observation)
             else:
                 device, obs = target[1], target[2]
                 self._check_device(device)
-                self.variables.add(obs)
+                self._validate_observation_name(obs)
+                self._require_variable(obs)
+                if self.devices[device].observation != obs:
+                    raise SemanticError(
+                        f"A observacao '{obs}' nao pertence ao dispositivo '{device}'"
+                    )
             self._collect_expr(stmt[2])
         elif kind == "execute":
             self._check_device(stmt[2])
@@ -284,10 +370,12 @@ class CodeGenerator:
 
     def _check_payload(self, payload: Any) -> None:
         msg = self._unquote(payload[1])
+        if not msg:
+            raise SemanticError("Mensagem de alerta nao pode ser vazia.")
         if len(msg) > 100:
             raise SemanticError("Mensagem de alerta com mais de 100 caracteres.")
         if payload[2]:
-            self.variables.add(payload[2])
+            self._require_variable(payload[2])
 
     def _collect_obs(self, obs: Any) -> None:
         for cond in obs[1]:
@@ -298,16 +386,48 @@ class CodeGenerator:
         if expr[0] == "execute":
             self._check_device(expr[2])
         elif expr[0] == "var":
-            self.variables.add(expr[1])
+            self._require_variable(expr[1])
 
     def _check_device(self, name: str) -> None:
         if name not in self.devices:
             raise SemanticError(f"Dispositivo usado sem declaração: {name}")
 
+    def _validate_observation_name(self, name: str) -> None:
+        if self.OBSERVATION_RE.fullmatch(name) is None:
+            raise SemanticError(
+                f"Nome de observacao invalido; use letras, numeros e sublinhado: {name}"
+            )
+
+    def _require_variable(self, name: str) -> None:
+        self._validate_observation_name(name)
+        if name in self.devices and self.devices[name].observation is None:
+            # Compatibilidade com um exemplo do enunciado que declara
+            # ``dispositivo: {umidade}`` e usa ``umidade`` como observacao.
+            self.variables.add(name)
+            return
+        if name not in self.variables:
+            raise SemanticError(f"Observacao usada sem declaracao: {name}")
+
+    def _build_python_names(self) -> None:
+        used = set(self.PYTHON_RESERVED)
+        for name in sorted(self.variables):
+            candidate = name
+            if keyword.iskeyword(candidate) or candidate in used:
+                candidate = f"obs_{candidate}"
+            base = candidate
+            suffix = 2
+            while candidate in used or keyword.iskeyword(candidate):
+                candidate = f"{base}_{suffix}"
+                suffix += 1
+            self.python_names[name] = candidate
+            used.add(candidate)
+
+    def _python_name(self, name: str) -> str:
+        return self.python_names[name]
+
     @staticmethod
     def _unquote(s: str) -> str:
-        # Interpreta escapes simples no mesmo estilo de strings Python.
-        return bytes(s[1:-1], "utf-8").decode("unicode_escape")
+        return ast.literal_eval(s)
 
     def generate(self) -> str:
         self.validate()
@@ -320,15 +440,15 @@ class CodeGenerator:
         lines.append(f"dispositivos = {device_names!r}")
         lines.append("estados = {nome: 0 for nome in dispositivos}")
         lines.append("")
-        lines.append("# Observações/sensores. Valores não definidos começam em zero.")
-        for var in sorted(self.variables):
-            lines.append(f"{var} = 0")
-        lines.append("")
         lines.append("def main():")
+        if self.variables:
+            lines.append("    # Observacoes nao definidas comecam em zero.")
+            for var in sorted(self.variables):
+                lines.append(f"    {self._python_name(var)} = 0")
         if statements:
             for stmt in statements:
                 lines += self._stmt(stmt, 1)
-        else:
+        elif not self.variables:
             lines.append("    pass")
         lines.append("")
         lines.append("if __name__ == '__main__':")
@@ -375,7 +495,7 @@ class CodeGenerator:
         if kind == "set":
             target, expr = stmt[1], stmt[2]
             var_name = target[1] if target[0] == "target" else target[2]
-            return [f"{ind}global {var_name}", f"{ind}{var_name} = {self._expr(expr)}"]
+            return [f"{ind}{self._python_name(var_name)} = {self._expr(expr)}"]
         if kind == "execute":
             return [f"{ind}{self._execute(stmt)}"]
         if kind == "alert":
@@ -409,7 +529,7 @@ class CodeGenerator:
         if kind == "bool":
             return "True" if expr[1] else "False"
         if kind == "var":
-            return expr[1]
+            return self._python_name(expr[1])
         if kind == "execute":
             return self._execute(expr)
         raise SemanticError(f"Expressão desconhecida: {expr}")
@@ -429,7 +549,7 @@ class CodeGenerator:
         _, msg, observation = payload
         if observation is None:
             return f"alerta({device!r}, {msg})"
-        return f"alerta({device!r}, {msg}, {observation})"
+        return f"alerta({device!r}, {msg}, {self._python_name(observation)})"
 
 
 def parse_source(source: str) -> Tuple[str, List[Any], List[Any]]:
@@ -447,15 +567,17 @@ def transpile_text(source: str) -> Tuple[str, List[str]]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     cli = argparse.ArgumentParser(description="Transpilador ObsAct -> Python")
-    cli.add_argument("entrada", help="arquivo .obs de entrada")
+    cli.add_argument("entrada", help="arquivo .obsact de entrada")
     cli.add_argument("-o", "--output", help="arquivo .py de saída")
     cli.add_argument("--print", action="store_true", help="imprime o Python gerado na saída padrão")
     args = cli.parse_args(argv)
 
     in_path = Path(args.entrada)
     try:
-        source = in_path.read_text(encoding="utf-8")
+        source = in_path.read_text(encoding="utf-8-sig")
         code, warnings = transpile_text(source)
+        if args.output:
+            Path(args.output).write_text(code, encoding="utf-8")
     except Exception as exc:
         print(f"Erro: {exc}", file=sys.stderr)
         return 1
@@ -463,8 +585,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     for warning in warnings:
         print(warning, file=sys.stderr)
 
-    if args.output:
-        Path(args.output).write_text(code, encoding="utf-8")
     if args.print or not args.output:
         print(code)
     return 0

@@ -1,35 +1,62 @@
-# Transpilador ObsAct -> Python (INF1022 2026.1)
+# Transpilador ObsAct para Python
 
-Este projeto implementa um analisador sintático para a linguagem **ObsAct** e transpila programas ObsAct para Python.
+Este projeto implementa um analisador lexico, sintatico e semantico para a
+linguagem ObsAct. O programa usa Lark no modo LALR(1) e gera codigo Python.
 
-O parser foi implementado com **Lark** usando o algoritmo **LALR(1)**.
+## Requisitos
 
-## Como instalar
+- Python 3.9 ou superior
+- Lark
+
+Instalacao:
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Como executar
 
+Para traduzir um arquivo ObsAct:
+
 ```bash
-python obsact.py tests/teste1.obs -o saida.py
+python obsact.py tests/exemplo1.obsact -o saida.py
 python saida.py
 ```
 
-Também é possível imprimir o Python gerado:
+Para mostrar o Python gerado no terminal:
 
 ```bash
-python obsact.py tests/teste1.obs --print
+python obsact.py tests/exemplo1.obsact --print
 ```
+
+## Como executar os testes
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Os testes verificam:
+
+- os cinco exemplos principais do enunciado;
+- blocos com varios comandos e condicionais aninhadas;
+- atribuicoes repetidas e inicializacao com zero;
+- nomes que sao reservados em Python;
+- dispositivos e observacoes nao declarados;
+- associacao entre dispositivo e observacao;
+- limites de tamanho de mensagens;
+- geracao pela linha de comando.
 
 ## Estrutura
 
-- `obsact.py`: analisador léxico, analisador sintático, validações semânticas simples e geração de Python.
-- `tests/`: programas ObsAct usados como testes.
-- `expected/`: arquivos Python gerados a partir dos testes.
-- `relatorio.md`: relatório do trabalho.
+- `obsact.py`: parser, validacao semantica e gerador de Python.
+- `tests/exemplo*.obsact`: casos de teste ObsAct.
+- `tests/test_obsact.py`: testes automatizados.
+- `expected/exemplo*.py`: saidas Python geradas para os exemplos.
+- `testes_obsact.zip`: pacote com os casos de teste para entrega.
+- `relatorio.md`: relatorio do trabalho.
 
-## Observação sobre blocos
+## Convencao de blocos
 
-A linguagem original tem exemplos com um ponto isolado (`.`) para encerrar blocos com múltiplos comandos após `entao`. Para tornar isso determinístico, este trabalho interpreta uma linha contendo apenas `.` como fim de bloco.
+Blocos com varios comandos podem ser encerrados por uma linha contendo apenas
+`.`. O transpilador tambem reconhece o recuo e o fim do arquivo para aceitar os
+formatos encontrados nos exemplos do enunciado.

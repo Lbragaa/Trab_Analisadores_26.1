@@ -1,0 +1,9 @@
+dispositivo: {Termometro, temperatura}
+dispositivo: {ventilador, potencia}
+set temperatura = 40.
+se temperatura > 30 entao
+    set estado_ventilador = verificar(ventilador).
+    se estado_ventilador == 0 entao ligar ventilador.
+    .
+    set potencia = 90.
+.
