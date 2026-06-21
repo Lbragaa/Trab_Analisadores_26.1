@@ -40,10 +40,12 @@ Os testes verificam:
 - os cinco exemplos principais do enunciado;
 - blocos com varios comandos e condicionais aninhadas;
 - atribuicoes repetidas e inicializacao com zero;
-- nomes que sao reservados em Python;
+- nomes reservados em Python e identificadores com prefixos reservados;
 - dispositivos e observacoes nao declarados;
 - associacao entre dispositivo e observacao;
-- limites de tamanho de mensagens;
+- broadcast em uma ou mais linhas;
+- mensagens vazias e limites de tamanho;
+- rejeicao de numeros negativos;
 - geracao pela linha de comando.
 
 ## Estrutura

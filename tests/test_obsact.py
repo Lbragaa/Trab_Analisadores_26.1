@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from obsact import SemanticError, main, transpile_text
+from lark.exceptions import UnexpectedCharacters
 
 
 def compile_source(source):
@@ -175,6 +176,14 @@ se umidade < 40 entao enviar alerta "Ar seco detectado" Monitor.
             with self.subTest(name=name):
                 with self.assertRaises(SemanticError):
                     transpile_text(source)
+
+    def test_numero_negativo_causa_erro_lexico(self):
+        source = """
+dispositivo: {lampada, potencia}
+set potencia = -1.
+"""
+        with self.assertRaises(UnexpectedCharacters):
+            transpile_text(source)
 
     def test_cli_gera_arquivo(self):
         source_path = ROOT / "tests" / "exemplo1.obsact"
