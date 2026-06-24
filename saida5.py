@@ -1,5 +1,5 @@
-# Código gerado automaticamente pelo transpilador ObsAct -> Python.
-# Não edite manualmente se pretender regerar este arquivo.
+# Codigo gerado automaticamente pelo transpilador ObsAct -> Python.
+# Nao edite manualmente se pretender regerar este arquivo.
 
 def ligar(namedevice):
     print(str(namedevice) + ' ligado!')
@@ -14,9 +14,9 @@ def desligar(namedevice):
 def verificar(namedevice):
     estado = estados.get(str(namedevice), 0)
     if estado:
-        print(str(namedevice) + ' está ligado.')
+        print(str(namedevice) + ' esta ligado.')
     else:
-        print(str(namedevice) + ' está desligado.')
+        print(str(namedevice) + ' esta desligado.')
     return estado
 
 def alerta(namedevice, msg, var=None):

@@ -10,8 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from obsact import SemanticError, main, transpile_text
+from codegen import generate_python
+from compiler import transpile_text
 from lark.exceptions import UnexpectedCharacters
+from obsact import main
+from parser import parse_source
+from semantic import SemanticError, analyze
 
 
 def compile_source(source):
@@ -30,6 +34,18 @@ def run_code(code):
 
 
 class ObsActTests(unittest.TestCase):
+    def test_pipeline_modular(self):
+        source = """
+dispositivo: {lampada, potencia}
+set potencia = 100.
+ligar lampada.
+"""
+        program = parse_source(source)
+        symbols = analyze(program)
+        code = generate_python(program, symbols)
+        self.assertIn("ligar('lampada')", code)
+        compile(code, "<pipeline-modular>", "exec")
+
     def test_todos_os_exemplos_compilam_e_executam(self):
         for path in sorted((ROOT / "tests").glob("exemplo*.obsact")):
             with self.subTest(path=path.name):
@@ -120,6 +136,19 @@ enviar alerta ("Temperatura em", temperatura) para todos:
 """
         code, _ = compile_source(source)
         run_code(code)
+
+    def test_comentario_depois_de_entao(self):
+        source = """
+dispositivo: {lampada, potencia}
+se potencia == 0 entao # inicio do bloco
+    ligar lampada.
+    desligar lampada.
+.
+"""
+        code, _ = compile_source(source)
+        output = run_code(code)
+        self.assertIn("lampada ligado!", output)
+        self.assertIn("lampada desligado!", output)
 
     def test_prefixos_de_palavras_reservadas_sao_identificadores(self):
         source = """

@@ -21,8 +21,8 @@ terminal e um dicionario interno de estados.
 
 ## 2. Arquitetura da implementacao
 
-O arquivo principal e `obsact.py`. A implementacao foi mantida em um unico
-modulo e possui as seguintes etapas:
+A implementacao foi dividida em modulos com responsabilidades separadas. O
+fluxo possui as seguintes etapas:
 
 1. leitura do arquivo ObsAct em UTF-8;
 2. pre-processamento dos blocos de comandos;
@@ -32,14 +32,19 @@ modulo e possui as seguintes etapas:
 6. conversao segura dos identificadores ObsAct para identificadores Python;
 7. geracao do programa Python.
 
-As principais partes do arquivo sao:
+Os modulos sao:
 
-- `GRAMMAR`: gramatica reconhecida pelo Lark;
-- `preprocess`: normalizacao dos blocos de comandos;
-- `ASTBuilder`: conversao da arvore do Lark para uma AST simples;
-- `CodeGenerator.validate`: validacoes semanticas;
-- `CodeGenerator.generate`: geracao do codigo Python;
-- `main`: interface de linha de comando.
+- `lexer.py`: define os terminais usados pelo lexer interno do Lark e realiza
+  o pre-processamento dos blocos;
+- `parser.py`: define as regras sintaticas, cria o parser LALR(1) e constroi a
+  AST;
+- `semantic.py`: valida dispositivos, observacoes, mensagens e nomes;
+- `codegen.py`: gera o programa Python a partir da AST validada;
+- `compiler.py`: coordena parser, analise semantica e geracao;
+- `obsact.py`: le argumentos e arquivos pela linha de comando.
+
+O Lark integra lexer e parser. Portanto, `lexer.py` nao implementa um lexer
+manual: ele concentra os terminais e regras lexicas que o Lark utiliza.
 
 ## 3. Instalacao e execucao
 
@@ -262,8 +267,9 @@ enunciado:
 4. `exemplo4.obsact`: alertas, booleanos e `senao`;
 5. `exemplo5.obsact`: atribuicao com dispositivo, bloco aninhado e estado.
 
-O arquivo `tests/test_obsact.py` possui testes automatizados adicionais para:
+O arquivo `tests/test_obsact.py` possui 15 grupos de testes automatizados para:
 
+- execucao direta das etapas modulares;
 - compilacao e execucao dos cinco exemplos;
 - atribuicoes repetidas;
 - leitura de observacao antes de uma atribuicao explicita;
@@ -273,6 +279,7 @@ O arquivo `tests/test_obsact.py` possui testes automatizados adicionais para:
 - bloco `senao` em varias linhas;
 - condicao com `&&`;
 - broadcast em uma e em varias linhas;
+- comentario depois de `entao`;
 - dispositivo simples usado como observacao;
 - erros lexicos e semanticos;
 - limites de tamanho;
@@ -299,7 +306,12 @@ internos dos tokens. Erros semanticos possuem mensagens especificas.
 
 ## 11. Arquivos para entrega
 
-- `obsact.py`: codigo do transpilador;
+- `lexer.py`: terminais e pre-processamento;
+- `parser.py`: parser LALR(1) e AST;
+- `semantic.py`: validacao e tabela de simbolos;
+- `codegen.py`: gerador de Python;
+- `compiler.py`: coordenacao do transpilador;
+- `obsact.py`: interface de linha de comando;
 - `requirements.txt`: dependencia do projeto;
 - `tests/`: entradas e testes automatizados;
 - `expected/`: programas Python de referencia;
